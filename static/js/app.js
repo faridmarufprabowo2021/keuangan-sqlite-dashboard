@@ -25,7 +25,7 @@ const state = {
     page: 1,
     pages: 1
   },
-  theme: localStorage.getItem('valuta_theme') || 'light'
+  theme: new URLSearchParams(location.search).get('theme') || localStorage.getItem('valuta_theme') || 'light'
 };
 
 // ---------------- Helpers ----------------
@@ -54,8 +54,7 @@ function debounce(func, wait) {
 async function apiGet(endpoint) {
   try {
     const res = await fetch(endpoint);
-    const json = await res.json();
-    return json.data !== undefined ? json.data : json;
+    return await res.json();
   } catch (err) {
     console.error('API GET Error:', endpoint, err);
     return null;
@@ -330,33 +329,39 @@ function updatePaginationUI() {
 
 // ---------------- Data Refresh ----------------
 async function loadSummary() {
-  state.summary = await apiGet('/api/summary');
+  const res = await apiGet('/api/summary');
+  state.summary = res ? res.data : null;
   renderSummary();
 }
 
 async function loadAccounts() {
-  state.accounts = (await apiGet('/api/accounts')) || [];
+  const res = await apiGet('/api/accounts');
+  state.accounts = (res && res.data) ? res.data : [];
   renderAccounts();
   populateAccountSelects();
 }
 
 async function loadCategories() {
-  state.categories = (await apiGet('/api/categories')) || [];
+  const res = await apiGet('/api/categories');
+  state.categories = (res && res.data) ? res.data : [];
   populateCategorySelects();
 }
 
 async function loadBudgets() {
-  state.budgets = (await apiGet('/api/budgets')) || [];
+  const res = await apiGet('/api/budgets');
+  state.budgets = (res && res.data) ? res.data : [];
   renderBudgets();
 }
 
 async function loadSavings() {
-  state.savings = (await apiGet('/api/savings')) || [];
+  const res = await apiGet('/api/savings');
+  state.savings = (res && res.data) ? res.data : [];
   renderSavings();
 }
 
 async function loadCashflow() {
-  state.cashflow = (await apiGet('/api/analytics/cashflow')) || [];
+  const res = await apiGet('/api/analytics/cashflow');
+  state.cashflow = (res && res.data) ? res.data : [];
   renderCashflowChart();
 }
 
@@ -373,7 +378,7 @@ async function loadTransactions() {
   const res = await apiGet(`/api/transactions?${qs.toString()}`);
   if (res && res.data) {
     state.transactions = res.data;
-    state.pagination = res.meta;
+    state.pagination = res.meta || { total: res.data.length, page: 1, pages: 1 };
   } else {
     state.transactions = [];
     state.pagination = { total: 0, page: 1, pages: 1 };

@@ -134,6 +134,35 @@ a {
   .wrap {
     padding: 0 var(--s-4);
   }
+  .brand-info .tagline {
+    display: none;
+  }
+  .header-controls .btn-secondary {
+    padding: 0 var(--s-2);
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .desktop-only {
+    display: none;
+  }
+  header.app-header {
+    height: auto;
+    padding: var(--s-3) 0;
+  }
+  .header-inner {
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+  .header-controls {
+    width: 100%;
+    justify-content: space-between;
+    gap: var(--s-2);
+  }
+  .header-controls .btn-primary {
+    flex: 1;
+  }
 }
 
 /* Header & Nav */
