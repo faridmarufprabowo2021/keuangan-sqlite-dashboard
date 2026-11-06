@@ -1,6 +1,7 @@
 /**
  * VALUTA — Precision Financial Dashboard Client
  * Pure Vanilla JavaScript ES6 (Zero bulky bloatware)
+ * Elevated UI/UX with Sparklines, Slide-Over Receipt Drawer, Quick Chips, & Hotkeys
  */
 
 const state = {
@@ -11,7 +12,6 @@ const state = {
   budgets: [],
   savings: [],
   cashflow: [],
-  breakdown: [],
   filters: {
     search: '',
     type: '',
@@ -25,10 +25,11 @@ const state = {
     page: 1,
     pages: 1
   },
+  activeTx: null,
   theme: new URLSearchParams(location.search).get('theme') || localStorage.getItem('valuta_theme') || 'light'
 };
 
-// ---------------- Helpers ----------------
+// ---------------- Helpers & Formatters ----------------
 function formatIDR(amount) {
   const num = Number(amount) || 0;
   return 'Rp ' + Math.round(num).toLocaleString('id-ID');
@@ -48,6 +49,23 @@ function debounce(func, wait) {
     clearTimeout(timeout);
     timeout = setTimeout(() => func.apply(this, args), wait);
   };
+}
+
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `
+    <span style="color:var(--accent);">●</span>
+    <span>${message}</span>
+  `;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(8px)';
+    setTimeout(() => toast.remove(), 250);
+  }, 3200);
 }
 
 // ---------------- API Calls ----------------
@@ -95,6 +113,9 @@ function renderSummary() {
   document.getElementById('statExpense').textContent = formatIDR(s.month_expense);
   document.getElementById('statSavingsRate').textContent = s.savings_rate + '%';
 
+  const accCountEl = document.getElementById('statAccCount');
+  if (accCountEl) accCountEl.textContent = `${s.accounts_count} Akun`;
+
   const cashflowEl = document.getElementById('statNetCashflow');
   if (cashflowEl) {
     cashflowEl.textContent = (s.net_cashflow >= 0 ? '+' : '') + formatIDR(s.net_cashflow);
@@ -102,9 +123,62 @@ function renderSummary() {
   }
 
   const periodLabel = document.getElementById('periodLabel');
-  if (periodLabel) {
-    periodLabel.textContent = s.period;
+  if (periodLabel) periodLabel.textContent = s.period;
+
+  const expTrendEl = document.getElementById('statExpenseTrend');
+  if (expTrendEl) {
+    const delta = s.expense_growth_vs_last_month;
+    if (delta <= 0) {
+      expTrendEl.textContent = `↓ Hemat ${Math.abs(delta)}%`;
+      expTrendEl.className = 'badge-tag badge-income';
+    } else {
+      expTrendEl.textContent = `↑ Naik ${delta}%`;
+      expTrendEl.className = 'badge-tag badge-expense';
+    }
   }
+
+  renderSparklines();
+}
+
+function renderSparklines() {
+  const cf = state.cashflow;
+  if (!cf || cf.length < 2) return;
+
+  function makeSparkline(values, strokeColor, containerId) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const min = Math.min(...values);
+    const max = Math.max(...values, min + 1);
+    const w = 180;
+    const h = 24;
+    const pts = values.map((v, i) => {
+      const x = (i / (values.length - 1)) * w;
+      const y = h - ((v - min) / (max - min)) * (h - 4) - 2;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+
+    el.innerHTML = `
+      <svg viewBox="0 0 ${w} ${h}">
+        <polyline fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="${pts}" />
+      </svg>
+    `;
+  }
+
+  // Net trajectory
+  const netVals = cf.map(d => d.income - d.expense);
+  makeSparkline(netVals, 'var(--accent)', 'sparklineNetWorth');
+
+  // Income trajectory
+  const incVals = cf.map(d => d.income);
+  makeSparkline(incVals, 'var(--income)', 'sparklineIncome');
+
+  // Expense trajectory
+  const expVals = cf.map(d => d.expense);
+  makeSparkline(expVals, 'var(--expense)', 'sparklineExpense');
+
+  // Savings rate
+  const savVals = cf.map(d => d.income > 0 ? ((d.income - d.expense) / d.income) * 100 : 0);
+  makeSparkline(savVals, 'var(--accent)', 'sparklineSavings');
 }
 
 function renderAccounts() {
@@ -119,7 +193,7 @@ function renderAccounts() {
   list.innerHTML = state.accounts.map(acc => {
     const initial = acc.institution.substring(0, 3).toUpperCase();
     return `
-      <div class="account-item">
+      <div class="account-item" onclick="filterByAccount(${acc.id})" title="Klik untuk memfilter transaksi akun ini">
         <div class="account-info">
           <div class="account-icon" style="background-color: ${acc.color};">
             ${initial}
@@ -147,7 +221,7 @@ function renderCashflowChart() {
 
   const maxVal = Math.max(...data.map(d => Math.max(d.income, d.expense)), 1000000);
   const width = 640;
-  const height = 210;
+  const height = 220;
   const paddingBottom = 28;
   const chartH = height - paddingBottom;
   const colWidth = width / data.length;
@@ -163,16 +237,16 @@ function renderCashflowChart() {
   // Bars & Labels
   data.forEach((d, idx) => {
     const x = idx * colWidth;
-    const barW = Math.min(22, (colWidth - 16) / 2);
+    const barW = Math.min(22, (colWidth - 18) / 2);
 
-    const incH = Math.max(3, (d.income / maxVal) * (chartH - 20));
-    const expH = Math.max(3, (d.expense / maxVal) * (chartH - 20));
+    const incH = Math.max(4, (d.income / maxVal) * (chartH - 20));
+    const expH = Math.max(4, (d.expense / maxVal) * (chartH - 20));
 
     const incY = chartH - incH;
     const expY = chartH - expH;
 
-    const incX = x + (colWidth / 2) - barW - 3;
-    const expX = x + (colWidth / 2) + 3;
+    const incX = x + (colWidth / 2) - barW - 4;
+    const expX = x + (colWidth / 2) + 4;
 
     // Income Bar
     svgContent += `
@@ -267,7 +341,7 @@ function renderTransactions() {
     tbody.innerHTML = `
       <tr>
         <td colspan="6" style="text-align: center; padding: 48px 16px; color: var(--ink-muted);">
-          Tidak ditemukan riwayat transaksi yang cocok dengan filter.
+          Tidak ditemukan riwayat transaksi yang cocok dengan filter saat ini.
         </td>
       </tr>
     `;
@@ -277,12 +351,23 @@ function renderTransactions() {
 
   tbody.innerHTML = state.transactions.map(t => {
     const isInc = t.type === 'income';
-    const sign = isInc ? '+' : '-';
-    const amountClass = isInc ? 'income' : 'expense';
-    const badgeType = isInc ? 'badge-income' : 'badge-expense';
+    const isTrf = t.type === 'transfer';
+    let sign = '-';
+    let amountClass = 'expense';
+    let badgeType = 'badge-expense';
+
+    if (isInc) {
+      sign = '+';
+      amountClass = 'income';
+      badgeType = 'badge-income';
+    } else if (isTrf) {
+      sign = '⇄ ';
+      amountClass = 'transfer';
+      badgeType = 'badge-transfer';
+    }
 
     return `
-      <tr>
+      <tr onclick="openTxDrawer(${t.id})">
         <td class="mono" style="font-size: 13px; color: var(--ink-muted);">${formatDate(t.date)}</td>
         <td>
           <div style="font-weight: 600;">${t.description}</div>
@@ -290,7 +375,7 @@ function renderTransactions() {
         </td>
         <td>
           <span class="badge-tag ${badgeType}">
-            ${t.category_name || 'Umum'}
+            ${t.category_name || (isTrf ? 'Transfer' : 'Umum')}
           </span>
         </td>
         <td>
@@ -299,7 +384,7 @@ function renderTransactions() {
         <td class="tx-amount ${amountClass} val">
           ${sign}${formatIDR(t.amount)}
         </td>
-        <td style="text-align: right;">
+        <td style="text-align: right;" onclick="event.stopPropagation()">
           <button class="btn btn-ghost btn-sm" onclick="deleteTx(${t.id})" title="Hapus transaksi">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -325,6 +410,121 @@ function updatePaginationUI() {
 
   if (prevBtn) prevBtn.disabled = meta.page <= 1;
   if (nextBtn) nextBtn.disabled = meta.page >= meta.pages;
+}
+
+// ---------------- Slide-Over Transaction Drawer ----------------
+function openTxDrawer(txId) {
+  const tx = state.transactions.find(t => t.id === txId);
+  if (!tx) return;
+  state.activeTx = tx;
+
+  const drawer = document.getElementById('drawerTxDetail');
+  const isInc = tx.type === 'income';
+  const isTrf = tx.type === 'transfer';
+
+  document.getElementById('drawerId').textContent = `#TX-${tx.id.toString().padStart(5, '0')}`;
+  document.getElementById('drawerAmount').textContent = (isInc ? '+' : (isTrf ? '⇄ ' : '-')) + formatIDR(tx.amount);
+  document.getElementById('drawerAmount').style.color = isInc ? 'var(--income)' : (isTrf ? 'var(--transfer)' : 'var(--expense)');
+  document.getElementById('drawerDesc').textContent = tx.description;
+  document.getElementById('drawerDate').textContent = formatDate(tx.date) + ` (${tx.date})`;
+  document.getElementById('drawerCat').textContent = tx.category_name || (isTrf ? 'Transfer Antar Rekening' : 'Umum');
+  document.getElementById('drawerAcc').textContent = tx.account_name + (tx.to_account_name ? ` → ${tx.to_account_name}` : '');
+  document.getElementById('drawerMerchant').textContent = tx.payee_merchant || '-';
+
+  const badgeEl = document.getElementById('drawerBadge');
+  badgeEl.textContent = tx.type.toUpperCase();
+  badgeEl.className = 'badge-tag ' + (isInc ? 'badge-income' : (isTrf ? 'badge-transfer' : 'badge-expense'));
+
+  const notesRow = document.getElementById('drawerNotesRow');
+  const notesEl = document.getElementById('drawerNotes');
+  if (tx.notes) {
+    notesRow.style.display = 'flex';
+    notesEl.textContent = tx.notes;
+  } else {
+    notesRow.style.display = 'none';
+  }
+
+  const deleteBtn = document.getElementById('btnDrawerDelete');
+  deleteBtn.onclick = () => {
+    deleteTx(tx.id);
+    closeTxDrawer();
+  };
+
+  drawer.classList.add('active');
+}
+
+function closeTxDrawer(e) {
+  if (e && e.target !== e.currentTarget && !e.target.closest('.drawer-header button') && !e.target.closest('.drawer-footer button')) return;
+  const drawer = document.getElementById('drawerTxDetail');
+  drawer.classList.remove('active');
+  state.activeTx = null;
+}
+
+// ---------------- Quick Filters & Nav Switcher ----------------
+function switchNavTab(tabName, el) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+
+  const targets = {
+    overview: 'sectionOverview',
+    ledger: 'sectionLedger',
+    budgets: 'sectionBudgets',
+    accounts: 'sectionAccounts'
+  };
+
+  const id = targets[tabName];
+  if (id) {
+    const targetEl = document.getElementById(id);
+    if (targetEl) {
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+}
+
+function applyQuickFilter(type, el) {
+  document.querySelectorAll('.quick-chip').forEach(c => c.classList.remove('active'));
+  if (el) el.classList.add('active');
+
+  state.filters.type = type;
+  state.filters.category_id = '';
+  state.filters.page = 1;
+
+  const typeSelect = document.getElementById('filterType');
+  if (typeSelect) typeSelect.value = type;
+
+  const catSelect = document.getElementById('filterCategory');
+  if (catSelect) catSelect.value = '';
+
+  loadTransactions();
+}
+
+function applyQuickCategory(catName, el) {
+  document.querySelectorAll('.quick-chip').forEach(c => c.classList.remove('active'));
+  if (el) el.classList.add('active');
+
+  const cat = state.categories.find(c => c.name === catName);
+  state.filters.category_id = cat ? cat.id : '';
+  state.filters.type = '';
+  state.filters.page = 1;
+
+  const catSelect = document.getElementById('filterCategory');
+  if (catSelect && cat) catSelect.value = cat.id;
+
+  const typeSelect = document.getElementById('filterType');
+  if (typeSelect) typeSelect.value = '';
+
+  loadTransactions();
+}
+
+function filterByAccount(accId) {
+  const accSelect = document.getElementById('filterAccount');
+  if (accSelect) accSelect.value = accId;
+  state.filters.account_id = accId;
+  state.filters.page = 1;
+  loadTransactions();
+  const ledgerEl = document.getElementById('sectionLedger');
+  if (ledgerEl) ledgerEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  showToast(`Memfilter transaksi akun ID #${accId}`);
 }
 
 // ---------------- Data Refresh ----------------
@@ -360,7 +560,7 @@ async function loadSavings() {
 }
 
 async function loadCashflow() {
-  const res = await apiGet('/api/analytics/cashflow');
+  const res = await apiGet('/api/analytics/cashflow?months=6');
   state.cashflow = (res && res.data) ? res.data : [];
   renderCashflowChart();
 }
@@ -389,15 +589,15 @@ async function loadTransactions() {
 function populateAccountSelects() {
   const filterAcc = document.getElementById('filterAccount');
   const formAcc = document.getElementById('txAccount');
+  const trFrom = document.getElementById('trFromAcc');
+  const trTo = document.getElementById('trToAcc');
 
   const options = state.accounts.map(a => `<option value="${a.id}">${a.name} (${formatIDR(a.current_balance)})</option>`).join('');
 
-  if (filterAcc) {
-    filterAcc.innerHTML = '<option value="">Semua Akun / Dompet</option>' + options;
-  }
-  if (formAcc) {
-    formAcc.innerHTML = options;
-  }
+  if (filterAcc) filterAcc.innerHTML = '<option value="">Semua Akun / Dompet</option>' + options;
+  if (formAcc) formAcc.innerHTML = options;
+  if (trFrom) trFrom.innerHTML = options;
+  if (trTo) trTo.innerHTML = options;
 }
 
 function populateCategorySelects() {
@@ -438,10 +638,27 @@ function openAddTxModal() {
   }
   populateCategorySelects();
   modal.classList.add('active');
+  setTimeout(() => document.getElementById('txAmount')?.focus(), 100);
 }
 
 function closeAddTxModal() {
   const modal = document.getElementById('modalAddTx');
+  modal.classList.remove('active');
+}
+
+function openTransferModal() {
+  const modal = document.getElementById('modalTransfer');
+  const dateInput = document.getElementById('trDate');
+  if (dateInput && !dateInput.value) {
+    dateInput.value = new Date().toISOString().split('T')[0];
+  }
+  populateAccountSelects();
+  modal.classList.add('active');
+  setTimeout(() => document.getElementById('trAmount')?.focus(), 100);
+}
+
+function closeTransferModal() {
+  const modal = document.getElementById('modalTransfer');
   modal.classList.remove('active');
 }
 
@@ -475,9 +692,41 @@ async function saveTransaction(e) {
   if (res.success) {
     closeAddTxModal();
     document.getElementById('formAddTx').reset();
+    showToast(`Transaksi "${desc}" berhasil disimpan!`);
     await refreshAll();
   } else {
     alert('Gagal menyimpan transaksi: ' + (res.message || 'Terjadi kesalahan'));
+  }
+}
+
+async function saveTransfer(e) {
+  e.preventDefault();
+  const fromId = document.getElementById('trFromAcc').value;
+  const toId = document.getElementById('trToAcc').value;
+  const amount = document.getElementById('trAmount').value;
+  const date = document.getElementById('trDate').value;
+  const notes = document.getElementById('trNotes').value;
+
+  if (fromId === toId) {
+    alert('Akun pengirim dan tujuan tidak boleh sama.');
+    return;
+  }
+
+  const res = await apiPost('/api/transfer', {
+    from_account_id: parseInt(fromId, 10),
+    to_account_id: parseInt(toId, 10),
+    amount: parseFloat(amount),
+    date: date,
+    notes: notes
+  });
+
+  if (res.success) {
+    closeTransferModal();
+    document.getElementById('formTransfer').reset();
+    showToast(`Transfer dana ${formatIDR(amount)} berhasil diproses!`);
+    await refreshAll();
+  } else {
+    alert('Gagal memproses transfer: ' + (res.message || 'Error'));
   }
 }
 
@@ -485,9 +734,19 @@ async function deleteTx(id) {
   if (!confirm('Apakah kamu yakin ingin menghapus catatan transaksi ini?')) return;
   const res = await apiDelete(`/api/transactions/${id}`);
   if (res.success) {
+    showToast('Transaksi berhasil dihapus');
     await refreshAll();
   } else {
     alert('Gagal menghapus: ' + (res.message || 'Error'));
+  }
+}
+
+async function seedDatabase() {
+  if (!confirm('Reset ulang data contoh (6 bulan riwayat finansial)?')) return;
+  const res = await apiPost('/api/seed', {});
+  if (res.success) {
+    showToast('Database berhasil di-reset dengan 6 bulan data realistis!');
+    await refreshAll();
   }
 }
 
@@ -495,7 +754,33 @@ function toggleTheme() {
   state.theme = state.theme === 'light' ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', state.theme);
   localStorage.setItem('valuta_theme', state.theme);
+  showToast(`Tema diubah ke ${state.theme === 'dark' ? 'Dark Mode' : 'Light Mode'}`);
 }
+
+// ---------------- Global Keyboard Shortcuts ----------------
+window.addEventListener('keydown', (e) => {
+  const isInput = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName);
+
+  if (e.key === 'Escape') {
+    closeAddTxModal();
+    closeTransferModal();
+    closeTxDrawer();
+    return;
+  }
+
+  if (isInput) return;
+
+  if (e.key === 'n' || e.key === 'N' || e.key === 'c' || e.key === 'C') {
+    e.preventDefault();
+    openAddTxModal();
+  } else if (e.key === '/') {
+    e.preventDefault();
+    document.getElementById('txSearch')?.focus();
+  } else if (e.key === 't' || e.key === 'T') {
+    e.preventDefault();
+    toggleTheme();
+  }
+});
 
 // ---------------- Initialization ----------------
 document.addEventListener('DOMContentLoaded', () => {

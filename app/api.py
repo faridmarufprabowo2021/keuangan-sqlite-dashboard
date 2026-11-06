@@ -310,10 +310,58 @@ class FinanceAPIHandler(SimpleHTTPRequestHandler):
                 self.send_json({"success": True, "message": "Target tabungan berhasil dibuat", "id": gid}, status=201)
                 return
 
-            # 5. Seed / Reset Data
+            # 5. Transfer Funds Between Accounts
+            if path == "/api/transfer":
+                from_id = body.get("from_account_id")
+                to_id = body.get("to_account_id")
+                amount = body.get("amount")
+                date = body.get("date")
+                notes = body.get("notes", "").strip()
+
+                if not from_id or not to_id or not amount or not date:
+                    self.send_error_json("from_account_id, to_account_id, amount, dan date wajib diisi")
+                    return
+
+                if int(from_id) == int(to_id):
+                    self.send_error_json("Akun pengirim dan penerima tidak boleh sama")
+                    return
+
+                try:
+                    amount_float = float(amount)
+                    if amount_float <= 0:
+                        raise ValueError()
+                except Exception:
+                    self.send_error_json("Nominal transfer harus berupa angka positif")
+                    return
+
+                # Get account names
+                from_acc = model.conn.execute("SELECT name FROM accounts WHERE id = ?", (from_id,)).fetchone()
+                to_acc = model.conn.execute("SELECT name FROM accounts WHERE id = ?", (to_id,)).fetchone()
+
+                desc = f"Transfer ke {to_acc['name']}" if to_acc else "Transfer Antar Rekening"
+
+                # Find or assign a transfer category
+                cat_row = model.conn.execute("SELECT id FROM categories WHERE name LIKE '%Transfer%' OR is_default = 1 LIMIT 1").fetchone()
+                cat_id = cat_row["id"] if cat_row else 1
+
+                tx_id = model.create_transaction(
+                    account_id=int(from_id),
+                    category_id=cat_id,
+                    tx_type="transfer",
+                    amount=amount_float,
+                    date=date,
+                    description=desc,
+                    payee_merchant=to_acc["name"] if to_acc else "Rekening Tujuan",
+                    notes=notes,
+                    to_account_id=int(to_id)
+                )
+                self.send_json({"success": True, "message": "Transfer antar rekening berhasil diproses", "id": tx_id}, status=201)
+                return
+
+            # 6. Seed / Reset Data
             if path == "/api/seed":
                 from seed import seed
-                seed()
+                seed(force_reseed=True)
                 self.send_json({"success": True, "message": "Database berhasil diseed ulang"})
                 return
 
