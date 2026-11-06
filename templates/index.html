@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="id" data-type="software" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Valuta — Precision Financial Dashboard OS backed by SQLite and Anti-Slop Design Taste">
+  <title>Valuta — Precision Financial OS (SQLite)</title>
+  <link rel="stylesheet" href="/static/css/system.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23057a55'/><text x='50%' y='68%' font-size='60' font-family='monospace' font-weight='bold' fill='white' text-anchor='middle'>V</text></svg>">
+</head>
+<body>
+
+  <!-- Top Fixed Navigation Bar -->
+  <header class="app-header">
+    <div class="wrap header-inner">
+      <div class="brand">
+        <div class="brand-mark">V</div>
+        <div class="brand-info">
+          <h1>Valuta Finance</h1>
+          <div class="tagline">SQLite Precision Ledger · Anti-Slop</div>
+        </div>
+      </div>
+
+      <div class="header-controls">
+        <!-- Theme Toggle -->
+        <button class="btn btn-ghost btn-sm" onclick="toggleTheme()" title="Ubah Tema Terang / Gelap" aria-label="Toggle Theme">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+        </button>
+
+        <!-- Export CSV -->
+        <a href="/api/export/csv" class="btn btn-secondary btn-sm" download title="Ekspor data ke file CSV">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          CSV
+        </a>
+
+        <!-- Export SQLite DB -->
+        <a href="/api/export/db" class="btn btn-secondary btn-sm" download title="Download backup database SQLite">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+          </svg>
+          SQLite
+        </a>
+
+        <!-- Primary Action -->
+        <button class="btn btn-primary" onclick="openAddTxModal()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Catat Transaksi
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Wrap -->
+  <main class="wrap" style="flex: 1; padding-bottom: 48px;">
+    
+    <!-- Executive Metrics Grid -->
+    <section class="metrics-grid" aria-label="Ringkasan Eksekutif">
+      <!-- 1. Total Net Worth -->
+      <div class="card metric-card">
+        <div class="metric-label">
+          <span>Total Kekayaan Bersih</span>
+          <span class="badge-tag badge-neutral mono">Aktif</span>
+        </div>
+        <div class="metric-value val" id="statNetWorth">Rp 0</div>
+        <div class="metric-meta">
+          <span style="color: var(--ink-muted);">Tersebar di 5 rekening & dompet</span>
+        </div>
+      </div>
+
+      <!-- 2. Month Income -->
+      <div class="card metric-card">
+        <div class="metric-label">
+          <span>Pemasukan Bulan Ini</span>
+          <span class="badge-tag badge-income mono">Inflow</span>
+        </div>
+        <div class="metric-value val" id="statIncome" style="color: var(--income);">Rp 0</div>
+        <div class="metric-meta">
+          <span style="color: var(--ink-muted);">Periode <strong id="periodLabel" class="mono">-</strong></span>
+        </div>
+      </div>
+
+      <!-- 3. Month Expense -->
+      <div class="card metric-card">
+        <div class="metric-label">
+          <span>Pengeluaran Bulan Ini</span>
+          <span class="badge-tag badge-expense mono">Outflow</span>
+        </div>
+        <div class="metric-value val" id="statExpense" style="color: var(--expense);">Rp 0</div>
+        <div class="metric-meta">
+          <span style="color: var(--ink-muted);">Termasuk tagihan operasional</span>
+        </div>
+      </div>
+
+      <!-- 4. Savings Rate -->
+      <div class="card metric-card">
+        <div class="metric-label">
+          <span>Rasio Tabungan</span>
+          <span id="statNetCashflow" class="badge-tag badge-income">+Rp 0</span>
+        </div>
+        <div class="metric-value val" id="statSavingsRate" style="color: var(--accent);">0%</div>
+        <div class="metric-meta">
+          <span style="color: var(--ink-muted);">Surplus arus kas neto tersimpan</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dual Grid: Chart + Wallets -->
+    <section class="dashboard-grid">
+      <!-- Cashflow Chart -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="20" x2="18" y2="10"/>
+                <line x1="12" y1="20" x2="12" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="14"/>
+              </svg>
+              Arus Kas Bulanan
+            </h2>
+            <div class="card-subtitle">Perbandingan pemasukan vs pengeluaran (6 bulan terakhir)</div>
+          </div>
+          <div class="chart-legend">
+            <div class="legend-item">
+              <div class="legend-dot" style="background-color: var(--income);"></div>
+              <span>Pemasukan</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-dot" style="background-color: var(--expense);"></div>
+              <span>Pengeluaran</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="cashflowChart" class="chart-container"></div>
+      </div>
+
+      <!-- Wallets & Accounts -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="5" width="20" height="14" rx="2"/>
+                <line x1="2" y1="10" x2="22" y2="10"/>
+              </svg>
+              Rekening & Dompet
+            </h2>
+            <div class="card-subtitle">Saldo riil dihitung dari seluruh transaksi</div>
+          </div>
+        </div>
+
+        <div id="accountsList" style="max-height: 250px; overflow-y: auto;">
+          <!-- Loaded via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Secondary Grid: Budgets & Savings -->
+    <section class="secondary-grid">
+      <!-- Budgets -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              </svg>
+              Target Anggaran Bulanan
+            </h2>
+            <div class="card-subtitle">Realisasi pengeluaran terhadap batas limit</div>
+          </div>
+        </div>
+
+        <div id="budgetsList" class="progress-list">
+          <!-- Loaded via JS -->
+        </div>
+      </div>
+
+      <!-- Savings Goals -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              Target Tabungan & Aset
+            </h2>
+            <div class="card-subtitle">Akumulasi dana darurat & portofolio masa depan</div>
+          </div>
+        </div>
+
+        <div id="savingsList" class="progress-list">
+          <!-- Loaded via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Ledger & Transactions -->
+    <section class="card" style="margin-top: var(--s-5);">
+      <div class="table-header-bar">
+        <div>
+          <h2 class="card-title" style="font-size: 17px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+            Buku Besar Transaksi
+          </h2>
+          <div class="card-subtitle">Data tersimpan di SQLite secara relasional dan terenkripsi lokal</div>
+        </div>
+
+        <div class="filters-row">
+          <!-- Live Search -->
+          <div class="search-input-box">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="txSearch" placeholder="Cari transaksi, merchant, deskripsi..." autocomplete="off">
+          </div>
+
+          <!-- Type Filter -->
+          <select id="filterType" class="select-filter">
+            <option value="">Semua Tipe</option>
+            <option value="expense">Pengeluaran</option>
+            <option value="income">Pemasukan</option>
+          </select>
+
+          <!-- Category Filter -->
+          <select id="filterCategory" class="select-filter">
+            <option value="">Semua Kategori</option>
+          </select>
+
+          <!-- Account Filter -->
+          <select id="filterAccount" class="select-filter">
+            <option value="">Semua Akun / Dompet</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Table View -->
+      <div class="table-responsive">
+        <table class="valuta-table">
+          <thead>
+            <tr>
+              <th style="width: 130px;">Tanggal</th>
+              <th>Deskripsi & Merchant</th>
+              <th style="width: 170px;">Kategori</th>
+              <th style="width: 180px;">Akun / Dompet</th>
+              <th style="width: 160px; text-align: right;">Nominal (IDR)</th>
+              <th style="width: 60px; text-align: right;">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="transactionsTableBody">
+            <!-- Loaded via JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="table-pagination">
+        <div id="txTotalCount">Memuat data...</div>
+        <div style="display: flex; align-items: center; gap: var(--s-3);">
+          <span id="txPageIndicator" class="mono">-</span>
+          <button id="btnPrevPage" class="btn btn-secondary btn-sm" disabled>Sebelumnya</button>
+          <button id="btnNextPage" class="btn btn-secondary btn-sm" disabled>Berikutnya</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal: Tambah Transaksi -->
+  <div id="modalAddTx" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="card-title">Catat Transaksi Baru</h3>
+        <button class="btn btn-ghost btn-sm" onclick="closeAddTxModal()" aria-label="Tutup">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <form id="formAddTx" onsubmit="saveTransaction(event)">
+        <div class="modal-body">
+          <!-- Type -->
+          <div class="form-group">
+            <label for="txType">Tipe Transaksi</label>
+            <select id="txType" class="form-control" required>
+              <option value="expense" selected>Pengeluaran</option>
+              <option value="income">Pemasukan</option>
+            </select>
+          </div>
+
+          <!-- Nominal -->
+          <div class="form-group">
+            <label for="txAmount">Nominal (Rupiah)</label>
+            <input type="number" id="txAmount" class="form-control mono" placeholder="Contoh: 150000" min="1" step="any" required>
+          </div>
+
+          <!-- Description -->
+          <div class="form-group">
+            <label for="txDesc">Deskripsi Transaksi</label>
+            <input type="text" id="txDesc" class="form-control" placeholder="Contoh: Makan Siang Nasi Padang" required>
+          </div>
+
+          <!-- Payee / Merchant -->
+          <div class="form-group">
+            <label for="txMerchant">Merchant / Penerima / Pengirim</label>
+            <input type="text" id="txMerchant" class="form-control" placeholder="Contoh: RM Garuda Sabang">
+          </div>
+
+          <!-- Account -->
+          <div class="form-group">
+            <label for="txAccount">Sumber Akun / Dompet</label>
+            <select id="txAccount" class="form-control" required>
+              <!-- Filled via JS -->
+            </select>
+          </div>
+
+          <!-- Category -->
+          <div class="form-group">
+            <label for="txCategory">Kategori</label>
+            <select id="txCategory" class="form-control" required>
+              <!-- Filled via JS -->
+            </select>
+          </div>
+
+          <!-- Date -->
+          <div class="form-group">
+            <label for="txDate">Tanggal Transaksi</label>
+            <input type="date" id="txDate" class="form-control mono" required>
+          </div>
+
+          <!-- Notes -->
+          <div class="form-group">
+            <label for="txNotes">Catatan Tambahan (Opsional)</label>
+            <input type="text" id="txNotes" class="form-control" placeholder="No struk / detail kebutuhan">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeAddTxModal()">Batal</button>
+          <button type="submit" class="btn btn-primary">Simpan Transaksi</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div class="wrap footer-inner">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--income); display: inline-block;"></span>
+        <span>SQLite WAL Engine Online</span>
+        <span>·</span>
+        <span>Valuta Financial OS</span>
+      </div>
+
+      <div style="display: flex; gap: var(--s-4);">
+        <a href="/api/summary" target="_blank" class="mono" style="color: var(--ink-muted);">API Summary</a>
+        <a href="/api/export/csv" class="mono" style="color: var(--ink-muted);">Export CSV</a>
+        <a href="/api/export/db" class="mono" style="color: var(--ink-muted);">Backup SQLite</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
